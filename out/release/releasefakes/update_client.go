@@ -38,6 +38,16 @@ type UpdateClient struct {
 	addUserGroupReturns struct {
 		result1 error
 	}
+	AddReleaseDependencyStub        func(productSlug string, releaseID int, dependentReleaseID int) error
+	addReleaseDependencyMutex       sync.RWMutex
+	addReleaseDependencyArgsForCall []struct {
+		productSlug        string
+		releaseID          int
+		dependentReleaseID int
+	}
+	addReleaseDependencyReturns struct {
+		result1 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -147,6 +157,41 @@ func (fake *UpdateClient) AddUserGroupReturns(result1 error) {
 	}{result1}
 }
 
+func (fake *UpdateClient) AddReleaseDependency(productSlug string, releaseID int, dependentReleaseID int) error {
+	fake.addReleaseDependencyMutex.Lock()
+	fake.addReleaseDependencyArgsForCall = append(fake.addReleaseDependencyArgsForCall, struct {
+		productSlug        string
+		releaseID          int
+		dependentReleaseID int
+	}{productSlug, releaseID, dependentReleaseID})
+	fake.recordInvocation("AddReleaseDependency", []interface{}{productSlug, releaseID, dependentReleaseID})
+	fake.addReleaseDependencyMutex.Unlock()
+	if fake.AddReleaseDependencyStub != nil {
+		return fake.AddReleaseDependencyStub(productSlug, releaseID, dependentReleaseID)
+	} else {
+		return fake.addReleaseDependencyReturns.result1
+	}
+}
+
+func (fake *UpdateClient) AddReleaseDependencyCallCount() int {
+	fake.addReleaseDependencyMutex.RLock()
+	defer fake.addReleaseDependencyMutex.RUnlock()
+	return len(fake.addReleaseDependencyArgsForCall)
+}
+
+func (fake *UpdateClient) AddReleaseDependencyArgsForCall(i int) (string, int, int) {
+	fake.addReleaseDependencyMutex.RLock()
+	defer fake.addReleaseDependencyMutex.RUnlock()
+	return fake.addReleaseDependencyArgsForCall[i].productSlug, fake.addReleaseDependencyArgsForCall[i].releaseID, fake.addReleaseDependencyArgsForCall[i].dependentReleaseID
+}
+
+func (fake *UpdateClient) AddReleaseDependencyReturns(result1 error) {
+	fake.AddReleaseDependencyStub = nil
+	fake.addReleaseDependencyReturns = struct {
+		result1 error
+	}{result1}
+}
+
 func (fake *UpdateClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -156,6 +201,8 @@ func (fake *UpdateClient) Invocations() map[string][][]interface{} {
 	defer fake.releaseETagMutex.RUnlock()
 	fake.addUserGroupMutex.RLock()
 	defer fake.addUserGroupMutex.RUnlock()
+	fake.addReleaseDependencyMutex.RLock()
+	defer fake.addReleaseDependencyMutex.RUnlock()
 	return fake.invocations
 }
 

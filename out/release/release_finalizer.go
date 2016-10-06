@@ -39,9 +39,22 @@ type updateClient interface {
 	UpdateRelease(productSlug string, release pivnet.Release) (pivnet.Release, error)
 	ReleaseETag(productSlug string, releaseID int) (string, error)
 	AddUserGroup(productSlug string, releaseID int, userGroupID int) error
+	AddReleaseDependency(productSlug string, releaseID int, dependentReleaseID int) error
 }
 
-func (rf ReleaseFinalizer) Finalize(release pivnet.Release) (concourse.OutResponse, error) {
+func (rf ReleaseFinalizer) Finalize(productSlug string, release pivnet.Release) (concourse.OutResponse, error) {
+	for i, d := range rf.metadata.Dependencies {
+		dependentReleaseID := d.Release.ID
+		if dependentReleaseID == 0 {
+			return concourse.OutResponse{}, fmt.Errorf("ReleaseID is zero for dependency[%d]", i)
+		}
+
+		err := rf.pivnet.AddReleaseDependency(productSlug, release.ID, dependentReleaseID)
+		if err != nil {
+			return concourse.OutResponse{}, err
+		}
+	}
+
 	availability := rf.metadata.Release.Availability
 
 	if availability != "Admins Only" {

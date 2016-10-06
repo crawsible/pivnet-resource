@@ -2,6 +2,7 @@ package release_test
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/pivotal-cf/go-pivnet"
 	"github.com/pivotal-cf/pivnet-resource/concourse"
@@ -16,16 +17,23 @@ import (
 var _ = Describe("ReleaseFinalizer", func() {
 	Describe("Finalize", func() {
 		var (
-			pivnetClient  *releasefakes.UpdateClient
-			params        concourse.OutParams
+			pivnetClient *releasefakes.UpdateClient
+			params       concourse.OutParams
+
+			mdata metadata.Metadata
+
+			productSlug   string
 			pivnetRelease pivnet.Release
-			finalizer     release.ReleaseFinalizer
+
+			finalizer release.ReleaseFinalizer
 		)
 
 		BeforeEach(func() {
 			pivnetClient = &releasefakes.UpdateClient{}
 
 			params = concourse.OutParams{}
+
+			productSlug = "some-product-slug"
 
 			pivnetRelease = pivnet.Release{
 				Availability: "Admins Only",
@@ -36,25 +44,67 @@ var _ = Describe("ReleaseFinalizer", func() {
 				},
 			}
 
-			meta := metadata.Metadata{
+			mdata = metadata.Metadata{
 				Release: &metadata.Release{
-					Availability: "Admins Only",
+					Availability: "some-value",
 					Version:      "some-version",
 					EULASlug:     "a_eula_slug",
 				},
 				ProductFiles: []metadata.ProductFile{},
 			}
 
-			finalizer = release.NewFinalizer(pivnetClient, params, meta, "/some/sources/dir", "a-product-slug")
+			pivnetClient.UpdateReleaseReturns(pivnet.Release{Version: "a-diff-version", EULA: &pivnet.EULA{Slug: "eula_slug"}}, nil)
+			pivnetClient.ReleaseETagReturns("a-diff-etag", nil)
+		})
+
+		JustBeforeEach(func() {
+			finalizer = release.NewFinalizer(
+				pivnetClient,
+				params,
+				mdata,
+				"/some/sources/dir",
+				"a-product-slug",
+			)
+		})
+
+		It("returns a final concourse out response", func() {
+			response, err := finalizer.Finalize(productSlug, pivnetRelease)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(pivnetClient.AddUserGroupCallCount()).To(BeZero())
+
+			productSlug, releaseUpdate := pivnetClient.UpdateReleaseArgsForCall(0)
+			Expect(productSlug).To(Equal("a-product-slug"))
+			Expect(releaseUpdate).To(Equal(pivnet.Release{ID: 1337, Availability: mdata.Release.Availability}))
+
+			Expect(response.Version).To(Equal(concourse.Version{
+				ProductVersion: "a-diff-version#a-diff-etag",
+			}))
+
+			Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "version", Value: "a-diff-version"}))
+			Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "controlled", Value: "false"}))
+			Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "eula_slug", Value: "eula_slug"}))
+		})
+
+		Context("updating the release returns an error", func() {
+			BeforeEach(func() {
+				pivnetClient.UpdateReleaseReturns(pivnet.Release{}, errors.New("there was a problem updating the release"))
+			})
+
+			It("returns an error", func() {
+				_, err := finalizer.Finalize(productSlug, pivnetRelease)
+				Expect(err).To(MatchError(errors.New("there was a problem updating the release")))
+			})
 		})
 
 		Context("when the release availability is Admins Only", func() {
 			BeforeEach(func() {
+				mdata.Release.Availability = "Admins Only"
 				pivnetClient.ReleaseETagReturns("some-etag", nil)
 			})
 
 			It("returns a final concourse out response", func() {
-				response, err := finalizer.Finalize(pivnetRelease)
+				response, err := finalizer.Finalize(productSlug, pivnetRelease)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(pivnetClient.UpdateReleaseCallCount()).To(BeZero())
@@ -89,7 +139,7 @@ var _ = Describe("ReleaseFinalizer", func() {
 					})
 
 					It("returns an error", func() {
-						_, err := finalizer.Finalize(pivnetRelease)
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
 						Expect(err).To(MatchError(errors.New("some etag error")))
 					})
 				})
@@ -98,23 +148,18 @@ var _ = Describe("ReleaseFinalizer", func() {
 
 		Context("when the release availability is Selected User Groups Only", func() {
 			BeforeEach(func() {
-				meta := metadata.Metadata{
-					Release: &metadata.Release{
-						Availability: "Selected User Groups Only",
-						EULASlug:     "eula_slug",
-						UserGroupIDs: []string{"111", "222"},
-					},
-				}
+				mdata.Release.Availability = "Selected User Groups Only"
+				mdata.Release.UserGroupIDs = []string{"111", "222"}
 
 				pivnetClient.UpdateReleaseReturns(pivnet.Release{ID: 2001, Version: "another-version", EULA: &pivnet.EULA{Slug: "eula_slug"}}, nil)
 				pivnetClient.ReleaseETagReturns("a-sep-etag", nil)
-
-				finalizer = release.NewFinalizer(pivnetClient, params, meta, "/some/sources/dir", "a-product-slug")
 			})
 
 			It("returns a final concourse out response", func() {
-				response, err := finalizer.Finalize(pivnetRelease)
+				response, err := finalizer.Finalize(productSlug, pivnetRelease)
 				Expect(err).NotTo(HaveOccurred())
+
+				Expect(pivnetClient.AddUserGroupCallCount()).To(Equal(2))
 
 				slug, releaseID, userGroupID := pivnetClient.AddUserGroupArgsForCall(0)
 				Expect(slug).To(Equal("a-product-slug"))
@@ -134,19 +179,11 @@ var _ = Describe("ReleaseFinalizer", func() {
 			Context("when an error occurs", func() {
 				Context("when a user group ID cannpt be converted to a number", func() {
 					BeforeEach(func() {
-						meta := metadata.Metadata{
-							Release: &metadata.Release{
-								Availability: "Selected User Groups Only",
-								EULASlug:     "eula_slug",
-								UserGroupIDs: []string{"&&&"},
-							},
-						}
-
-						finalizer = release.NewFinalizer(pivnetClient, params, meta, "/some/sources/dir", "a-product-slug")
+						mdata.Release.UserGroupIDs = []string{"&&&"}
 					})
 
 					It("returns an error", func() {
-						_, err := finalizer.Finalize(pivnetRelease)
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
 						Expect(err).To(MatchError(ContainSubstring(`parsing "&&&": invalid syntax`)))
 					})
 				})
@@ -157,68 +194,77 @@ var _ = Describe("ReleaseFinalizer", func() {
 					})
 
 					It("returns an error", func() {
-						_, err := finalizer.Finalize(pivnetRelease)
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
 						Expect(err).To(MatchError(errors.New("failed to add user group")))
 					})
 				})
 			})
 		})
 
-		Context("when the release availability is any other value", func() {
+		Context("when release dependencies are provided", func() {
 			BeforeEach(func() {
-				meta := metadata.Metadata{
-					Release: &metadata.Release{
-						Availability: "some other group",
-						EULASlug:     "eula_slug",
-						UserGroupIDs: []string{"111", "222"},
+				mdata.Dependencies = []metadata.Dependency{
+					{
+						Release: metadata.DependentRelease{
+							ID: 9876,
+						},
+					},
+					{
+						Release: metadata.DependentRelease{
+							ID: 8765,
+						},
 					},
 				}
-
-				pivnetClient.UpdateReleaseReturns(pivnet.Release{Version: "a-diff-version", EULA: &pivnet.EULA{Slug: "eula_slug"}}, nil)
-				pivnetClient.ReleaseETagReturns("a-diff-etag", nil)
-
-				finalizer = release.NewFinalizer(pivnetClient, params, meta, "/some/sources/dir", "a-product-slug")
 			})
 
-			It("returns a final concourse out response", func() {
-				response, err := finalizer.Finalize(pivnetRelease)
+			It("adds the dependencies", func() {
+				_, err := finalizer.Finalize(productSlug, pivnetRelease)
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(pivnetClient.AddUserGroupCallCount()).To(BeZero())
-
-				productSlug, releaseUpdate := pivnetClient.UpdateReleaseArgsForCall(0)
-				Expect(productSlug).To(Equal("a-product-slug"))
-				Expect(releaseUpdate).To(Equal(pivnet.Release{ID: 1337, Availability: "some other group"}))
-
-				Expect(response.Version).To(Equal(concourse.Version{
-					ProductVersion: "a-diff-version#a-diff-etag",
-				}))
-
-				Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "version", Value: "a-diff-version"}))
-				Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "controlled", Value: "false"}))
-				Expect(response.Metadata).To(ContainElement(concourse.Metadata{Name: "eula_slug", Value: "eula_slug"}))
+				Expect(pivnetClient.AddReleaseDependencyCallCount()).To(Equal(2))
 			})
 
-			Context("when an errors occurs", func() {
-				Context("updating the release fails", func() {
-					BeforeEach(func() {
-						meta := metadata.Metadata{
-							Release: &metadata.Release{
-								Availability: "some other group",
-								EULASlug:     "eula_slug",
-								UserGroupIDs: []string{"111", "222"},
-							},
-						}
+			Context("when a releaseID is zero", func() {
+				BeforeEach(func() {
+					mdata.Dependencies[1].Release.ID = 0
+				})
 
-						pivnetClient.UpdateReleaseReturns(pivnet.Release{}, errors.New("there was a problem updating the release"))
+				It("returns an error", func() {
+					_, err := finalizer.Finalize(productSlug, pivnetRelease)
+					Expect(err).To(HaveOccurred())
 
-						finalizer = release.NewFinalizer(pivnetClient, params, meta, "/some/sources/dir", "a-product-slug")
-					})
+					Expect(err.Error()).To(ContainSubstring("dependency[1]"))
+				})
+			})
 
-					It("returns an error", func() {
-						_, err := finalizer.Finalize(pivnetRelease)
-						Expect(err).To(MatchError(errors.New("there was a problem updating the release")))
-					})
+			Context("when a releaseID is zero", func() {
+				BeforeEach(func() {
+					mdata.Dependencies[1].Release.ID = 0
+				})
+
+				It("returns an error", func() {
+					_, err := finalizer.Finalize(productSlug, pivnetRelease)
+					Expect(err).To(HaveOccurred())
+
+					Expect(err.Error()).To(ContainSubstring("dependency[1]"))
+				})
+			})
+
+			Context("when adding dependency returns an error ", func() {
+				var (
+					expectedErr error
+				)
+
+				BeforeEach(func() {
+					expectedErr = fmt.Errorf("boom")
+					pivnetClient.AddReleaseDependencyReturns(expectedErr)
+				})
+
+				It("returns an error", func() {
+					_, err := finalizer.Finalize(productSlug, pivnetRelease)
+					Expect(err).To(HaveOccurred())
+
+					Expect(err).To(Equal(expectedErr))
 				})
 			})
 		})
