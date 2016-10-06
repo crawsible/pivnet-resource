@@ -48,6 +48,16 @@ type UpdateClient struct {
 	addReleaseDependencyReturns struct {
 		result1 error
 	}
+	GetReleaseStub        func(productSlug string, releaseVersion string) (go_pivnet.Release, error)
+	getReleaseMutex       sync.RWMutex
+	getReleaseArgsForCall []struct {
+		productSlug    string
+		releaseVersion string
+	}
+	getReleaseReturns struct {
+		result1 go_pivnet.Release
+		result2 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -192,6 +202,41 @@ func (fake *UpdateClient) AddReleaseDependencyReturns(result1 error) {
 	}{result1}
 }
 
+func (fake *UpdateClient) GetRelease(productSlug string, releaseVersion string) (go_pivnet.Release, error) {
+	fake.getReleaseMutex.Lock()
+	fake.getReleaseArgsForCall = append(fake.getReleaseArgsForCall, struct {
+		productSlug    string
+		releaseVersion string
+	}{productSlug, releaseVersion})
+	fake.recordInvocation("GetRelease", []interface{}{productSlug, releaseVersion})
+	fake.getReleaseMutex.Unlock()
+	if fake.GetReleaseStub != nil {
+		return fake.GetReleaseStub(productSlug, releaseVersion)
+	} else {
+		return fake.getReleaseReturns.result1, fake.getReleaseReturns.result2
+	}
+}
+
+func (fake *UpdateClient) GetReleaseCallCount() int {
+	fake.getReleaseMutex.RLock()
+	defer fake.getReleaseMutex.RUnlock()
+	return len(fake.getReleaseArgsForCall)
+}
+
+func (fake *UpdateClient) GetReleaseArgsForCall(i int) (string, string) {
+	fake.getReleaseMutex.RLock()
+	defer fake.getReleaseMutex.RUnlock()
+	return fake.getReleaseArgsForCall[i].productSlug, fake.getReleaseArgsForCall[i].releaseVersion
+}
+
+func (fake *UpdateClient) GetReleaseReturns(result1 go_pivnet.Release, result2 error) {
+	fake.GetReleaseStub = nil
+	fake.getReleaseReturns = struct {
+		result1 go_pivnet.Release
+		result2 error
+	}{result1, result2}
+}
+
 func (fake *UpdateClient) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
@@ -203,6 +248,8 @@ func (fake *UpdateClient) Invocations() map[string][][]interface{} {
 	defer fake.addUserGroupMutex.RUnlock()
 	fake.addReleaseDependencyMutex.RLock()
 	defer fake.addReleaseDependencyMutex.RUnlock()
+	fake.getReleaseMutex.RLock()
+	defer fake.getReleaseMutex.RUnlock()
 	return fake.invocations
 }
 

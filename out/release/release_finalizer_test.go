@@ -206,12 +206,20 @@ var _ = Describe("ReleaseFinalizer", func() {
 				mdata.Dependencies = []metadata.Dependency{
 					{
 						Release: metadata.DependentRelease{
-							ID: 9876,
+							ID:      9876,
+							Version: "some-dependent-release-version",
+							Product: metadata.Product{
+								Slug: "some-dependent-product",
+							},
 						},
 					},
 					{
 						Release: metadata.DependentRelease{
-							ID: 8765,
+							ID:      8765,
+							Version: "some-other-dependent-release-version",
+							Product: metadata.Product{
+								Slug: "some-other-dependent-product",
+							},
 						},
 					},
 				}
@@ -224,29 +232,67 @@ var _ = Describe("ReleaseFinalizer", func() {
 				Expect(pivnetClient.AddReleaseDependencyCallCount()).To(Equal(2))
 			})
 
-			Context("when a releaseID is zero", func() {
+			Context("when the dependent release ID is zero", func() {
 				BeforeEach(func() {
 					mdata.Dependencies[1].Release.ID = 0
+
+					dependentRelease := pivnet.Release{
+						ID: 9876,
+					}
+
+					pivnetClient.GetReleaseReturns(dependentRelease, nil)
 				})
 
-				It("returns an error", func() {
+				It("obtains the dependent release from the version and product slug", func() {
 					_, err := finalizer.Finalize(productSlug, pivnetRelease)
-					Expect(err).To(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 
-					Expect(err.Error()).To(ContainSubstring("dependency[1]"))
-				})
-			})
-
-			Context("when a releaseID is zero", func() {
-				BeforeEach(func() {
-					mdata.Dependencies[1].Release.ID = 0
+					Expect(pivnetClient.AddReleaseDependencyCallCount()).To(Equal(2))
+					Expect(pivnetClient.GetReleaseCallCount()).To(Equal(1))
 				})
 
-				It("returns an error", func() {
-					_, err := finalizer.Finalize(productSlug, pivnetRelease)
-					Expect(err).To(HaveOccurred())
+				Context("when obtaining the dependent release returns an error", func() {
+					var (
+						expectedErr error
+					)
 
-					Expect(err.Error()).To(ContainSubstring("dependency[1]"))
+					BeforeEach(func() {
+						expectedErr = fmt.Errorf("some release error")
+						pivnetClient.GetReleaseReturns(pivnet.Release{}, expectedErr)
+					})
+
+					It("forwards the error", func() {
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
+						Expect(err).To(HaveOccurred())
+
+						Expect(err).To(Equal(expectedErr))
+					})
+				})
+
+				Context("when dependent release version is empty", func() {
+					BeforeEach(func() {
+						mdata.Dependencies[1].Release.Version = ""
+					})
+
+					It("returns an error", func() {
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
+						Expect(err).To(HaveOccurred())
+
+						Expect(err.Error()).To(ContainSubstring("dependency[1]"))
+					})
+				})
+
+				Context("when dependent product slug is empty", func() {
+					BeforeEach(func() {
+						mdata.Dependencies[1].Release.Product = metadata.Product{}
+					})
+
+					It("returns an error", func() {
+						_, err := finalizer.Finalize(productSlug, pivnetRelease)
+						Expect(err).To(HaveOccurred())
+
+						Expect(err.Error()).To(ContainSubstring("dependency[1]"))
+					})
 				})
 			})
 

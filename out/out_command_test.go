@@ -25,6 +25,8 @@ var _ = Describe("Out", func() {
 			uploader  *outfakes.Uploader
 			globber   *outfakes.Globber
 			cmd       out.OutCommand
+
+			productSlug string
 		)
 
 		BeforeEach(func() {
@@ -34,6 +36,8 @@ var _ = Describe("Out", func() {
 			validator = &outfakes.Validation{}
 			uploader = &outfakes.Uploader{}
 			globber = &outfakes.Globber{}
+
+			productSlug = "some-product-slug"
 
 			meta := metadata.Metadata{
 				Release: &metadata.Release{
@@ -73,7 +77,12 @@ var _ = Describe("Out", func() {
 		})
 
 		It("returns a concourse out response", func() {
-			request := concourse.OutRequest{}
+			request := concourse.OutRequest{
+				Source: concourse.Source{
+					ProductSlug: productSlug,
+				},
+			}
+
 			response, err := cmd.Run(request)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -91,7 +100,9 @@ var _ = Describe("Out", func() {
 			Expect(pivnetRelease).To(Equal(pivnet.Release{ID: 1337, Availability: "none"}))
 			Expect(exactGlobs).To(Equal([]string{"some-glob-1", "some-glob-2"}))
 
-			Expect(finalizer.FinalizeArgsForCall(0)).To(Equal(pivnet.Release{ID: 1337, Availability: "none"}))
+			invokedProductSlug, invokedRelease := finalizer.FinalizeArgsForCall(0)
+			Expect(invokedProductSlug).To(Equal(productSlug))
+			Expect(invokedRelease).To(Equal(pivnet.Release{ID: 1337, Availability: "none"}))
 		})
 
 		Context("when an error occurs", func() {

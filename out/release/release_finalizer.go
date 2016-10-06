@@ -40,13 +40,23 @@ type updateClient interface {
 	ReleaseETag(productSlug string, releaseID int) (string, error)
 	AddUserGroup(productSlug string, releaseID int, userGroupID int) error
 	AddReleaseDependency(productSlug string, releaseID int, dependentReleaseID int) error
+	GetRelease(productSlug string, releaseVersion string) (pivnet.Release, error)
 }
 
 func (rf ReleaseFinalizer) Finalize(productSlug string, release pivnet.Release) (concourse.OutResponse, error) {
 	for i, d := range rf.metadata.Dependencies {
 		dependentReleaseID := d.Release.ID
 		if dependentReleaseID == 0 {
-			return concourse.OutResponse{}, fmt.Errorf("ReleaseID is zero for dependency[%d]", i)
+			if d.Release.Version == "" || d.Release.Product.Slug == "" {
+				return concourse.OutResponse{}, fmt.Errorf(
+					"Either ReleaseID or release version and product slug must be provided for dependency[%d]", i)
+			}
+
+			r, err := rf.pivnet.GetRelease(d.Release.Product.Slug, d.Release.Version)
+			if err != nil {
+				return concourse.OutResponse{}, err
+			}
+			dependentReleaseID = r.ID
 		}
 
 		err := rf.pivnet.AddReleaseDependency(productSlug, release.ID, dependentReleaseID)

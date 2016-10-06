@@ -9,10 +9,11 @@ import (
 )
 
 type Finalizer struct {
-	FinalizeStub        func(release go_pivnet.Release) (concourse.OutResponse, error)
+	FinalizeStub        func(productSlug string, release go_pivnet.Release) (concourse.OutResponse, error)
 	finalizeMutex       sync.RWMutex
 	finalizeArgsForCall []struct {
-		release go_pivnet.Release
+		productSlug string
+		release     go_pivnet.Release
 	}
 	finalizeReturns struct {
 		result1 concourse.OutResponse
@@ -22,15 +23,16 @@ type Finalizer struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *Finalizer) Finalize(release go_pivnet.Release) (concourse.OutResponse, error) {
+func (fake *Finalizer) Finalize(productSlug string, release go_pivnet.Release) (concourse.OutResponse, error) {
 	fake.finalizeMutex.Lock()
 	fake.finalizeArgsForCall = append(fake.finalizeArgsForCall, struct {
-		release go_pivnet.Release
-	}{release})
-	fake.recordInvocation("Finalize", []interface{}{release})
+		productSlug string
+		release     go_pivnet.Release
+	}{productSlug, release})
+	fake.recordInvocation("Finalize", []interface{}{productSlug, release})
 	fake.finalizeMutex.Unlock()
 	if fake.FinalizeStub != nil {
-		return fake.FinalizeStub(release)
+		return fake.FinalizeStub(productSlug, release)
 	} else {
 		return fake.finalizeReturns.result1, fake.finalizeReturns.result2
 	}
@@ -42,10 +44,10 @@ func (fake *Finalizer) FinalizeCallCount() int {
 	return len(fake.finalizeArgsForCall)
 }
 
-func (fake *Finalizer) FinalizeArgsForCall(i int) go_pivnet.Release {
+func (fake *Finalizer) FinalizeArgsForCall(i int) (string, go_pivnet.Release) {
 	fake.finalizeMutex.RLock()
 	defer fake.finalizeMutex.RUnlock()
-	return fake.finalizeArgsForCall[i].release
+	return fake.finalizeArgsForCall[i].productSlug, fake.finalizeArgsForCall[i].release
 }
 
 func (fake *Finalizer) FinalizeReturns(result1 concourse.OutResponse, result2 error) {

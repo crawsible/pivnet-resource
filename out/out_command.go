@@ -59,7 +59,7 @@ type uploader interface {
 
 //go:generate counterfeiter --fake-name Finalizer . finalizer
 type finalizer interface {
-	Finalize(release pivnet.Release) (concourse.OutResponse, error)
+	Finalize(productSlug string, release pivnet.Release) (concourse.OutResponse, error)
 }
 
 //go:generate counterfeiter --fake-name Validation . validation
@@ -126,7 +126,8 @@ func (c OutCommand) Run(input concourse.OutRequest) (concourse.OutResponse, erro
 		return concourse.OutResponse{}, err
 	}
 
-	out, err := c.finalizer.Finalize(pivnetRelease)
+	productSlug := input.Source.ProductSlug
+	out, err := c.finalizer.Finalize(productSlug, pivnetRelease)
 	if err != nil {
 		return concourse.OutResponse{}, err
 	}
