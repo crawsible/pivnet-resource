@@ -71,7 +71,7 @@ var _ = Describe("Downloader", func() {
 
 			BeforeEach(func() {
 				expectedErr = errors.New("download file error")
-				fakeExtendedClient.DownloadFileReturns(expectedErr)
+				fakeExtendedClient.DownloadFileReturns(expectedErr, false)
 			})
 
 			It("raises an error", func() {

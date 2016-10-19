@@ -10,7 +10,7 @@ import (
 
 //go:generate counterfeiter --fake-name FakeExtendedClient . extendedClient
 type extendedClient interface {
-	DownloadFile(writer io.Writer, downloadLink string) error
+	DownloadFile(writer io.Writer, downloadLink string) (err error, retryable bool)
 }
 
 type Downloader struct {
@@ -50,7 +50,7 @@ func (d Downloader) Download(downloadLinks map[string]string) ([]string, error) 
 		}
 
 		d.logger.Println(fmt.Sprintf("Downloading link: '%s' to file: '%s'", downloadLink, downloadPath))
-		err = d.extendedClient.DownloadFile(file, downloadLink)
+		err, _ = d.extendedClient.DownloadFile(file, downloadLink)
 		if err != nil {
 			return nil, err
 		}

@@ -7,7 +7,7 @@ import (
 )
 
 type FakeExtendedClient struct {
-	DownloadFileStub        func(writer io.Writer, downloadLink string) error
+	DownloadFileStub        func(writer io.Writer, downloadLink string) (err error, retryable bool)
 	downloadFileMutex       sync.RWMutex
 	downloadFileArgsForCall []struct {
 		writer       io.Writer
@@ -15,12 +15,13 @@ type FakeExtendedClient struct {
 	}
 	downloadFileReturns struct {
 		result1 error
+		result2 bool
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeExtendedClient) DownloadFile(writer io.Writer, downloadLink string) error {
+func (fake *FakeExtendedClient) DownloadFile(writer io.Writer, downloadLink string) (err error, retryable bool) {
 	fake.downloadFileMutex.Lock()
 	fake.downloadFileArgsForCall = append(fake.downloadFileArgsForCall, struct {
 		writer       io.Writer
@@ -31,7 +32,7 @@ func (fake *FakeExtendedClient) DownloadFile(writer io.Writer, downloadLink stri
 	if fake.DownloadFileStub != nil {
 		return fake.DownloadFileStub(writer, downloadLink)
 	} else {
-		return fake.downloadFileReturns.result1
+		return fake.downloadFileReturns.result1, fake.downloadFileReturns.result2
 	}
 }
 
@@ -47,11 +48,12 @@ func (fake *FakeExtendedClient) DownloadFileArgsForCall(i int) (io.Writer, strin
 	return fake.downloadFileArgsForCall[i].writer, fake.downloadFileArgsForCall[i].downloadLink
 }
 
-func (fake *FakeExtendedClient) DownloadFileReturns(result1 error) {
+func (fake *FakeExtendedClient) DownloadFileReturns(result1 error, result2 bool) {
 	fake.DownloadFileStub = nil
 	fake.downloadFileReturns = struct {
 		result1 error
-	}{result1}
+		result2 bool
+	}{result1, result2}
 }
 
 func (fake *FakeExtendedClient) Invocations() map[string][][]interface{} {
