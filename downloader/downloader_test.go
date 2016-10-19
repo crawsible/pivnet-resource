@@ -2,6 +2,7 @@ package downloader_test
 
 import (
 	"errors"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -64,7 +65,7 @@ var _ = Describe("Downloader", func() {
 			Expect(filepaths).Should(ContainElement(filepath.Join(dir, "file-2")))
 		})
 
-		Context("when it fails to make a request", func() {
+		Context("when a file download fails and is not retryable", func() {
 			var (
 				expectedErr error
 			)
@@ -79,6 +80,53 @@ var _ = Describe("Downloader", func() {
 
 				Expect(err).Should(HaveOccurred())
 				Expect(err).To(Equal(expectedErr))
+			})
+		})
+
+		Context("when a file download fails but is retryable", func() {
+			var (
+				expectedErr error
+			)
+
+			Context("when the download fails once", func() {
+				BeforeEach(func() {
+					expectedErr = errors.New("download file error")
+
+					attemptCount := 0
+					fakeExtendedClient.DownloadFileStub = func(io.Writer, string) (err error, retryable bool) {
+						shouldFail := (attemptCount < 1)
+						attemptCount++
+
+						if shouldFail {
+							return expectedErr, true
+						}
+
+						return nil, true
+					}
+				})
+
+				It("attempts the download again", func() {
+					_, err := d.Download(map[string]string{"^731drop": "&h%%%%"})
+
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(fakeExtendedClient.DownloadFileCallCount()).To(Equal(2))
+				})
+			})
+
+			Context("when the download fails three times", func() {
+				BeforeEach(func() {
+					expectedErr = errors.New("download file error")
+
+					fakeExtendedClient.DownloadFileReturns(expectedErr, true)
+				})
+
+				It("raises an error", func() {
+					_, err := d.Download(map[string]string{"^731drop": "&h%%%%"})
+
+					Expect(err).Should(HaveOccurred())
+					Expect(err).To(Equal(expectedErr))
+					Expect(fakeExtendedClient.DownloadFileCallCount()).To(Equal(3))
+				})
 			})
 		})
 

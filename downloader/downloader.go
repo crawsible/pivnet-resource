@@ -49,11 +49,28 @@ func (d Downloader) Download(downloadLinks map[string]string) ([]string, error) 
 			return nil, err
 		}
 
-		d.logger.Println(fmt.Sprintf("Downloading link: '%s' to file: '%s'", downloadLink, downloadPath))
-		err, _ = d.extendedClient.DownloadFile(file, downloadLink)
+		totalAttempts := 3
+		for i := 0; i < totalAttempts; i++ {
+			d.logger.Println(fmt.Sprintf("Downloading link: '%s' to file: '%s'", downloadLink, downloadPath))
+
+			var retryable bool
+			err, retryable = d.extendedClient.DownloadFile(file, downloadLink)
+			if err != nil {
+				if retryable {
+					attemptsRemaining := totalAttempts - i - 1
+					d.logger.Println(fmt.Sprintf("Download failed; retrying... (%d attempt(s) left)", attemptsRemaining))
+
+					continue
+				}
+			}
+
+			break
+		}
+
 		if err != nil {
 			return nil, err
 		}
+
 		fileNames = append(fileNames, downloadPath)
 	}
 
